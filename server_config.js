@@ -15,10 +15,15 @@
             targetDir = "/sdcard/Android/data/" + pkg + "/files/contentcache/Optional/android/gameassetbundles";
         }
 
-        let dlUrl = "https://github.com/Starszt/goddata/releases/download/goddata/" + fileGz;
+        // URL ASLI GITHUB RELEASE
+        let rawUrl = "https://github.com/Starszt/goddata/releases/download/goddata/" + fileGz;
+        
+        // JEMBATAN SILUMAN (BYPASS CORS GITHUB) 🔥
+        let dlUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(rawUrl);
+
         Ax.toast("Memproses " + n + " dari Server...");
 
-        // 1. DOWNLOAD VIA JAVASCRIPT BROWSER (BYPASS CURL)
+        // 1. DOWNLOAD VIA JAVASCRIPT BROWSER 
         let res = await fetch(dlUrl);
         if (!res.ok) throw new Error("Gagal Download Config");
         let blob = await res.blob();
