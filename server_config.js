@@ -14,47 +14,65 @@
             targetDir = "/sdcard/Android/data/" + pkg + "/files/contentcache/Optional/android/gameassetbundles";
         }
 
-        // Link Hugging Face lu
+        let baseName = fileGz.replace('.gz', '');
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        if (typeof Ax !== 'undefined') Ax.toast("Menarik data " + n + " dari Server...");
+        if (typeof Ax !== 'undefined') Ax.toast("Memulai Injeksi " + n + "...");
 
-        // INI SCRIPT SHELL MURNI (KAGAK BAKAL CRASH "INCOUDION" LAGI)
+        // 1. SAPU BERSIH SISA DOWNLOAD LAMA VIA SHELL (Biar ga numpuk)
+        await Ax.exec(`rm -f /sdcard/Download/${baseName}*.gz /sdcard/Download/${baseName}*.crdownload`);
+
+        // 2. DOWNLOAD LEWAT IFRAME (Bypass Axeron yang ga bisa curl)
+        // Pasti jalan walau diklik 100x karena lewat pintu belakang browser
+        let iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = dlUrl + "?t=" + Date.now();
+        document.body.appendChild(iframe);
+        
+        setTimeout(() => { document.body.removeChild(iframe); }, 5000);
+
+        if (typeof Ax !== 'undefined') Ax.toast("Mengunduh data (Mohon tunggu)...");
+
+        // 3. RADAR AXERON (Pantau Folder Download & Langsung Ekstrak)
         let cmd = `
             TARGET_DIR="${targetDir}"
-            TMP_FILE="/sdcard/Download/gdtmp_goddata.gz"
-            
-            # Bikin folder target dan hapus file temp sisaan
             mkdir -p "$TARGET_DIR" 2>/dev/null
-            rm -f "$TMP_FILE"
             
-            # Coba download pakai curl atau wget, sikat habis!
-            curl -sL "${dlUrl}" -o "$TMP_FILE" || wget -qO "$TMP_FILE" "${dlUrl}" --no-check-certificate || toybox wget -qO "$TMP_FILE" "${dlUrl}"
+            # Looping melototin folder Download (Tunggu sampai max 90 detik)
+            for i in $(seq 1 90); do
+                # Cari file mentahan dari Chrome
+                CR_FILE=$(ls /sdcard/Download/${baseName}*.crdownload 2>/dev/null)
+                # Cari file utuh
+                GZ_FILE=$(ls /sdcard/Download/${baseName}*.gz 2>/dev/null | head -n 1)
+                
+                # Kalau file .gz ada DAN file .crdownload udah hilang (Download Kelar 100%)
+                if [ -n "$GZ_FILE" ] && [ -z "$CR_FILE" ]; then
+                    sleep 2 # Jeda napas storage
+                    
+                    # HAJAR EKSTRAK PAKE JURUS LU!
+                    toybox tar -xzf "$GZ_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
+                    
+                    # Hapus file zip/gz biar HP user ga penuh
+                    rm -f /sdcard/Download/${baseName}*.gz
+                    pm trim-caches 999G >/dev/null 2>&1
+                    
+                    # Keluarin Notif Berhasil
+                    cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
+                    exit 0
+                fi
+                sleep 2
+            done
             
-            # CEK MUTLAK: Apakah file berhasil didownload dan ga kosong?
-            if [ -s "$TMP_FILE" ]; then
-                # Hajar ekstrak pake single pipe lu!
-                toybox tar -xzf "$TMP_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
-                
-                # Sapu bersih file mentahan
-                rm -f "$TMP_FILE"
-                pm trim-caches 999G >/dev/null 2>&1
-                
-                # Keluarin Notifikasi Android kalau sukses
-                cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
-            else
-                rm -f "$TMP_FILE"
-                # Keluarin Notifikasi Android kalau gagal
-                cmd notification post -S bigtext -t "Goddata System" "Gagal" "Gagal narik config. Cek sinyal atau link HuggingFace lu."
-            fi
+            # Kalau lebih dari 90 detik ga kelar (Internet Lemot / Batal)
+            cmd notification post -S bigtext -t "Goddata System" "Gagal" "Waktu habis. Download config gagal / dibatalkan."
         `;
         
-        // Hajar langsung ke mesin Axeron tanpa ngebaca return hasil JS!
+        // Jalanin radar secara gaib (fire and forget), ga usah nungguin balasan JS!
         if (typeof Ax !== 'undefined') {
-            await Ax.exec(cmd);
+            Ax.exec(cmd);
         }
 
     } catch(e) {
-        if (typeof Ax !== 'undefined') Ax.toast("Error Sistem: " + e.message);
+        if (typeof Ax !== 'undefined') Ax.toast("Error JS: " + e.message);
     }
 })();
