@@ -19,57 +19,68 @@
 
         Ax.toast("Mendownload " + n + "...");
 
-        // 1. SAPU BERSIH FILE MENTAHAN LAMA BIAR NGGAK BENTROK
+        // 1. SAPU BERSIH FILE LAMA BIAR NGGAK BENTROK
         await Ax.exec(`rm -f /sdcard/Download/${baseName}*.gz /sdcard/Download/${baseName}*.crdownload`);
 
-        // 2. TRIGGER DOWNLOAD BROWSER
-        let uniqueFileName = baseName + "_" + Date.now() + ".gz"; // Bikin nama unik biar browser ga nanya "Download lagi?"
-        let res = await fetch(dlUrl + "?nocache=" + Date.now(), { cache: 'no-store' });
-        if (!res.ok) throw new Error("Gagal Download Config");
-        let blob = await res.blob();
-        
+        // 2. DOWNLOAD LANGSUNG (ANTI-BLOB) BIAR RAM AMAN
         let a = document.createElement("a");
-        let url = window.URL.createObjectURL(blob);
-        a.href = url;
-        a.download = uniqueFileName;
+        a.href = dlUrl + "?t=" + Date.now(); // Bypass cache
+        a.download = fileGz;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
-        // 3. RADAR PINTAR AXERON (Nunggu sampai file 100% kelar)
+        Ax.toast("Tunggu sebentar, sedang mengunduh...");
+
+        // 3. RADAR PINTAR AXERON (Pantau ukuran file sampai download kelar)
         let cmd = `
             mkdir -p "${targetDir}" 2>/dev/null
             
-            # Looping pantau folder Download (maksimal 60 detik)
-            for i in $(seq 1 60); do
-                # Cek apakah ada file download yang belum kelar (.crdownload)
-                CR_FILE=$(ls /sdcard/Download/${baseName}*.crdownload 2>/dev/null)
-                # Cek file .gz nya
-                GZ_FILE=$(ls /sdcard/Download/${baseName}*.gz 2>/dev/null | head -n 1)
-                
-                # Kalau GZ ada DAN CR udah ga ada = DOWNLOAD 100% SELESAI!
-                if [ -n "$GZ_FILE" ] && [ -z "$CR_FILE" ]; then
-                    sleep 1 # Kasih napas 1 detik buat storage
-                    
-                    # EKSTRAK MUTLAK
-                    toybox tar -xzf "$GZ_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "${targetDir}" 2>/dev/null
-                    
-                    # Sapu bersih file mentahan
-                    rm -f /sdcard/Download/${baseName}*.gz
-                    pm trim-caches 999G >/dev/null 2>&1
-                    
-                    echo "BERHASIL"
-                    exit 0
+            # Cari file yang baru di-download (Tunggu max 20 detik buat muncul)
+            FILE_TARGET=""
+            for i in $(seq 1 20); do
+                FILE_TARGET=$(ls -t /sdcard/Download/${baseName}*.gz 2>/dev/null | head -n 1)
+                if [ -n "$FILE_TARGET" ]; then
+                    break
                 fi
                 sleep 1
             done
+
+            if [ -z "$FILE_TARGET" ]; then
+                echo "TIMEOUT"
+                exit 1
+            fi
+
+            # Radar Ukuran: Tunggu sampai ukuran file berhenti bertambah
+            OLD_SIZE="-1"
+            NEW_SIZE=$(ls -nl "$FILE_TARGET" | awk '{print $5}')
+            
+            while [ -z "$NEW_SIZE" ] || [ "$OLD_SIZE" != "$NEW_SIZE" ]; do
+                OLD_SIZE=$NEW_SIZE
+                sleep 2
+                NEW_SIZE=$(ls -nl "$FILE_TARGET" | awk '{print $5}')
+            done
+
+            sleep 1 # Jeda napas sistem 1 detik
+
+            # EKSTRAK MUTLAK KARENA FILE UDAH 100% UTUH!
+            toybox tar -xzf "$FILE_TARGET" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "${targetDir}" 2>/dev/null
+            
+            # Bersihkan jejak mentahan
+            rm -f /sdcard/Download/${baseName}*.gz
+            pm trim-caches 999G >/dev/null 2>&1
+            
+            echo "SUKSES"
         `;
         
-        await Ax.exec(cmd);
-        Ax.toast(n + " Sukses Diinjeksi!");
+        // Jalanin radar di belakang layar
+        Ax.exec(cmd).then(() => {
+            Ax.toast(n + " Sukses Diinjeksi!");
+        }).catch(() => {
+            Ax.toast("Gagal Injeksi: Coba lagi");
+        });
 
     } catch(e) {
-        Ax.toast("Download Error: " + e.message);
+        Ax.toast("System Error: " + e.message);
     }
 })();
