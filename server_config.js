@@ -15,16 +15,14 @@
             targetDir = "/sdcard/Android/data/" + pkg + "/files/contentcache/Optional/android/gameassetbundles";
         }
 
-        // URL ASLI GITHUB RELEASE
-        let rawUrl = "https://github.com/Starszt/goddata/releases/download/goddata/" + fileGz;
-        
-        // JEMBATAN SILUMAN (BYPASS CORS GITHUB) 🔥
-        let dlUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(rawUrl);
+        // PAKE LINK RAW HUGGING FACE LU! (Anti-CORS, bebas file raksasa)
+        // Perhatiin gw pake /resolve/ bukan /tree/
+        let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
         Ax.toast("Memproses " + n + " dari Server...");
 
-        // 1. DOWNLOAD VIA JAVASCRIPT BROWSER 
-        let res = await fetch(dlUrl);
+        // 1. DOWNLOAD LANGSUNG MURNI VIA JAVASCRIPT
+        let res = await fetch(dlUrl + "?nocache=" + new Date().getTime(), { cache: 'no-store' });
         if (!res.ok) throw new Error("Gagal Download Config");
         let blob = await res.blob();
         let reader = new FileReader();
@@ -35,14 +33,14 @@
             
             // 2. CONVERT JADI BASE64 TEXT
             let b64 = reader.result.split(',')[1];
-            let chunkSize = 60000; // Pecah biar shell Android ngga bengong
+            let chunkSize = 60000; 
             
             for (let i = 0; i < b64.length; i += chunkSize) {
                 let chunk = b64.substring(i, i + chunkSize);
                 await Ax.exec(`echo -n "${chunk}" >> /data/local/tmp/b64.txt`);
             }
 
-            // 3. COMPILE & EXTRACT MURNI DI DALEM SHELL!
+            // 3. COMPILE & EXTRACT DI SHELL AXERON LU!
             let cmd = `
                 mkdir -p "${targetDir}" 2>/dev/null
                 base64 -d /data/local/tmp/b64.txt > /data/local/tmp/dl.gz
