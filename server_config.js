@@ -14,65 +14,77 @@
             targetDir = "/sdcard/Android/data/" + pkg + "/files/contentcache/Optional/android/gameassetbundles";
         }
 
-        let baseName = fileGz.replace('.gz', '');
+        // Link Hugging Face lu
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        if (typeof Ax !== 'undefined') Ax.toast("Memulai Injeksi " + n + "...");
+        if (typeof Ax !== 'undefined') Ax.toast("Mengunduh " + n + " dari Server...");
 
-        // 1. SAPU BERSIH SISA DOWNLOAD LAMA VIA SHELL (Biar ga numpuk)
-        await Ax.exec(`rm -f /sdcard/Download/${baseName}*.gz /sdcard/Download/${baseName}*.crdownload`);
-
-        // 2. DOWNLOAD LEWAT IFRAME (Bypass Axeron yang ga bisa curl)
-        // Pasti jalan walau diklik 100x karena lewat pintu belakang browser
-        let iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = dlUrl + "?t=" + Date.now();
-        document.body.appendChild(iframe);
+        // 1. TARIK DATA MURNI KE DALAM MEMORI (Anti blokir Browser/Spam)
+        let res = await fetch(dlUrl + "?nocache=" + Date.now(), { cache: 'no-store' });
+        if (!res.ok) throw new Error("Server HuggingFace tidak merespon");
         
-        setTimeout(() => { document.body.removeChild(iframe); }, 5000);
-
-        if (typeof Ax !== 'undefined') Ax.toast("Mengunduh data (Mohon tunggu)...");
-
-        // 3. RADAR AXERON (Pantau Folder Download & Langsung Ekstrak)
-        let cmd = `
-            TARGET_DIR="${targetDir}"
-            mkdir -p "$TARGET_DIR" 2>/dev/null
-            
-            # Looping melototin folder Download (Tunggu sampai max 90 detik)
-            for i in $(seq 1 90); do
-                # Cari file mentahan dari Chrome
-                CR_FILE=$(ls /sdcard/Download/${baseName}*.crdownload 2>/dev/null)
-                # Cari file utuh
-                GZ_FILE=$(ls /sdcard/Download/${baseName}*.gz 2>/dev/null | head -n 1)
-                
-                # Kalau file .gz ada DAN file .crdownload udah hilang (Download Kelar 100%)
-                if [ -n "$GZ_FILE" ] && [ -z "$CR_FILE" ]; then
-                    sleep 2 # Jeda napas storage
-                    
-                    # HAJAR EKSTRAK PAKE JURUS LU!
-                    toybox tar -xzf "$GZ_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
-                    
-                    # Hapus file zip/gz biar HP user ga penuh
-                    rm -f /sdcard/Download/${baseName}*.gz
-                    pm trim-caches 999G >/dev/null 2>&1
-                    
-                    # Keluarin Notif Berhasil
-                    cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
-                    exit 0
-                fi
-                sleep 2
-            done
-            
-            # Kalau lebih dari 90 detik ga kelar (Internet Lemot / Batal)
-            cmd notification post -S bigtext -t "Goddata System" "Gagal" "Waktu habis. Download config gagal / dibatalkan."
-        `;
+        let blob = await res.blob();
+        let reader = new FileReader();
         
-        // Jalanin radar secara gaib (fire and forget), ga usah nungguin balasan JS!
-        if (typeof Ax !== 'undefined') {
-            Ax.exec(cmd);
-        }
+        reader.onloadend = async function() {
+            try {
+                // 2. UBAH JADI TEKS RAHASIA (BASE64)
+                let b64 = reader.result.split(',')[1];
+                let chunkSize = 15000; // Dipotong kecil-kecil biar mesin Android ga muntah
+                let chunks = [];
+                for (let i = 0; i < b64.length; i += chunkSize) {
+                    chunks.push(b64.substring(i, i + chunkSize));
+                }
+
+                if (typeof Ax !== 'undefined') {
+                    Ax.toast("Menyuntikkan File ke Sistem: 0%");
+                    await Ax.exec("rm -f /data/local/tmp/gdtmp.b64 /data/local/tmp/gdtmp.gz");
+
+                    // 3. SUNTIK TEKS KE DALAM MESIN ANDROID (Pake printf anti error)
+                    for (let i = 0; i < chunks.length; i++) {
+                        await Ax.exec(`printf "%s" "${chunks[i]}" >> /data/local/tmp/gdtmp.b64`);
+                        // Kasih tau progress setiap beberapa suntikan
+                        if (i % 30 === 0 && i > 0) {
+                            Ax.toast(`Menyuntikkan File: ${Math.round((i/chunks.length)*100)}%`);
+                        }
+                    }
+
+                    Ax.toast("Mengekstrak " + n + " (Mohon Tunggu)...");
+
+                    // 4. COMPILE ULANG & EKSTRAK MURNI DI SHELL LU!
+                    let cmd = `
+                        mkdir -p "${targetDir}" 2>/dev/null
+                        
+                        # Ubah balik dari Teks ke File ZIP
+                        base64 -d /data/local/tmp/gdtmp.b64 > /data/local/tmp/gdtmp.gz || toybox base64 -d /data/local/tmp/gdtmp.b64 > /data/local/tmp/gdtmp.gz
+                        
+                        # Cek mutlak, filenya jadi apa enggak?
+                        if [ -s /data/local/tmp/gdtmp.gz ]; then
+                            # Hajar pake command ekstrak andalan lu!
+                            toybox tar -xzf /data/local/tmp/gdtmp.gz -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "${targetDir}" 2>/dev/null
+                            
+                            # Sapu bersih file sementara
+                            rm -f /data/local/tmp/gdtmp.b64 /data/local/tmp/gdtmp.gz
+                            pm trim-caches 999G >/dev/null 2>&1
+                            
+                            cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
+                        else
+                            cmd notification post -S bigtext -t "Goddata System" "Gagal" "File gagal dirakit di mesin."
+                        fi
+                    `;
+                    
+                    await Ax.exec(cmd);
+                    Ax.toast("Selesai! Silakan cek notifikasi HP lu.");
+                }
+            } catch(err) {
+                if (typeof Ax !== 'undefined') Ax.toast("Error Suntik: " + err.message);
+            }
+        };
+        
+        // Mulai proses baca memori
+        reader.readAsDataURL(blob);
 
     } catch(e) {
-        if (typeof Ax !== 'undefined') Ax.toast("Error JS: " + e.message);
+        if (typeof Ax !== 'undefined') Ax.toast("Error Server: " + e.message);
     }
 })();
