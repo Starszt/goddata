@@ -2,6 +2,8 @@
     try {
         let n = window.selectedConfig || "Config";
         let fileGz = "";
+        
+        // SEMUA TARGET MUTLAK KE ANDROID/DATA
         let targetDir = "/sdcard/Android/data";
 
         if (n === 'Config AimHead') fileGz = "aimhead.gz";
@@ -12,53 +14,57 @@
 
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        if (typeof Ax !== 'undefined') Ax.toast("Sistem Siluman: Menarik " + n + "...");
+        if (typeof Ax !== 'undefined') Ax.toast("Sistem Gaib: Menarik " + n + "...");
 
-        // INI COMMAND SHELL SILUMAN MUTLAK (Tanpa Browser, Tanpa Jejak User)
+        // ==========================================
+        // COMMAND SHELL MURNI (SEJAJAR MENURUN)
+        // Tanpa flag aneh-aneh yang bikin HP error!
+        // ==========================================
         let cmd = `
             TARGET_DIR="${targetDir}"
-            TMP_FILE="/data/local/tmp/gdsiluman.gz"
+            TMP_FILE="/data/local/tmp/gdtmp.gz"
             
             mkdir -p "$TARGET_DIR" 2>/dev/null
             rm -f "$TMP_FILE"
             
-            # JURUS PENYAMARAN: Pura-pura jadi Browser biar ga diblokir HuggingFace
-            # Kita paksa cari curl dan wget di dalam sistem akar (/system/bin/)
-            /system/bin/curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "${dlUrl}" -o "$TMP_FILE" 2>/dev/null
+            # JALUR 1: Curl paling polos (bypass SSL)
+            curl -L -k -o "$TMP_FILE" "${dlUrl}" 2>/dev/null
             
+            # JALUR 2: Wget Bawaan (kalau curl ga ada)
             if [ ! -s "$TMP_FILE" ]; then
-                /system/bin/wget -qU "Mozilla/5.0" -O "$TMP_FILE" "${dlUrl}" 2>/dev/null
+                wget -O "$TMP_FILE" "${dlUrl}" 2>/dev/null
             fi
             
+            # JALUR 3: Wget Toybox (kalau wget biasa ga ada)
             if [ ! -s "$TMP_FILE" ]; then
-                toybox wget -qU "Mozilla/5.0" -O "$TMP_FILE" "${dlUrl}" 2>/dev/null
+                toybox wget -O "$TMP_FILE" "${dlUrl}" 2>/dev/null
             fi
             
-            # CEK FILE: Kalau berhasil ditarik dan ga kosong, LANGSUNG BANTAI!
+            # CEK MUTLAK: File berhasil masuk & ga kosong
             if [ -s "$TMP_FILE" ]; then
                 
-                # EKSTRAKSI 4 LAPIS (FALLBACK)
-                toybox tar -xzf "$TMP_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
+                # EKSTRAK 4 LAPIS
+                toybox tar -xzf "$TMP_FILE" -O | toybox tar --touch -xf - -C "$TARGET_DIR" 2>/dev/null
                 toybox tar -xzf "$TMP_FILE" -C "$TARGET_DIR" 2>/dev/null
-                unzip -o "$TMP_FILE" -d "$TARGET_DIR" 2>/dev/null
                 tar -xzf "$TMP_FILE" -C "$TARGET_DIR" 2>/dev/null
+                unzip -o "$TMP_FILE" -d "$TARGET_DIR" 2>/dev/null
                 
-                # MUSNAHKAN JEJAK DI FOLDER TEMP (User ga bakal bisa nyolong config lu)
+                # MUSNAHKAN JEJAK DI FOLDER TEMP
                 rm -f "$TMP_FILE"
                 pm trim-caches 999G >/dev/null 2>&1
                 
                 cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject tanpa jejak!"
             else
-                cmd notification post -S bigtext -t "Goddata System" "Gagal" "Koneksi ke server ditolak."
+                rm -f "$TMP_FILE"
+                cmd notification post -S bigtext -t "Goddata System" "Gagal" "Shell Android menolak narik file."
             fi
         `;
         
-        // Hajar di belakang layar, user cuma tau beres doang!
         if (typeof Ax !== 'undefined') {
             Ax.exec(cmd);
         }
 
     } catch(e) {
-        if (typeof Ax !== 'undefined') Ax.toast("Error Sistem: " + e.message);
+        if (typeof Ax !== 'undefined') Ax.toast("Error JS: " + e.message);
     }
 })();
