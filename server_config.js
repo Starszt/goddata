@@ -14,26 +14,54 @@
             targetDir = "/sdcard/Android/data/" + pkg + "/files/contentcache/Optional/android/gameassetbundles";
         }
 
-        let baseName = fileGz.replace('.gz', '');
+        // Link Hugging Face lu
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        Ax.toast("Mendownload " + n + "...");
+        Ax.toast("Menarik data " + n + " dari Server...");
 
-        // 1. SAPU BERSIH SAMPAH LAMA BIAR GAK BENTROK
-        await Ax.exec(`rm -f /sdcard/Download/${baseName}*.gz /sdcard/Download/${baseName}*.crdownload`);
-
-        // 2. JURUS IFRAME SILUMAN (Bypass blokiran Browser)
-        // Ini dijamin nembus walau lu spam klik 100x
-        let iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = dlUrl + "?t=" + Date.now();
-        document.body.appendChild(iframe);
+        // INI DIA COMMAND SHELL MUTLAKNYA (ANTI-WEBVIEW BLOCK)
+        // Kita download pakai curl/wget ke folder /data/local/tmp/ dulu, baru diekstrak!
+        let cmd = `
+            TARGET_DIR="${targetDir}"
+            TMP_FILE="/data/local/tmp/${fileGz}"
+            
+            # Bikin folder target dan hapus file temp sisaan (kalau ada)
+            mkdir -p "$TARGET_DIR" 2>/dev/null
+            rm -f "$TMP_FILE"
+            
+            # Coba download pakai curl (-k buat bypass error SSL) 
+            # Kalau curl gagal, otomatis nyoba pakai wget
+            curl -skL "${dlUrl}" -o "$TMP_FILE" || wget -qO "$TMP_FILE" "${dlUrl}" --no-check-certificate
+            
+            # CEK MUTLAK: Apakah file berhasil didownload dan ukurannya ga nol? (-s)
+            if [ -s "$TMP_FILE" ]; then
+                # Kalau utuh, langsung hajar ekstrak!
+                toybox tar -xzf "$TMP_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
+                
+                # Sapu bersih file mentahannya
+                rm -f "$TMP_FILE"
+                pm trim-caches 999G >/dev/null 2>&1
+                
+                echo "SUKSES"
+            else
+                rm -f "$TMP_FILE"
+                echo "GAGAL"
+            fi
+        `;
         
-        // Hapus iframe setelah 5 detik biar HP lu tetep ringan
-        setTimeout(() => { document.body.removeChild(iframe); }, 5000);
+        let hasil = await Ax.exec(cmd);
+        
+        // Baca output dari shell buat mastiin
+        if (hasil && hasil.includes("SUKSES")) {
+            Ax.toast(n + " Sukses Diinjeksi!");
+        } else {
+            Ax.toast("Gagal Injeksi: Server Sibuk / Internet Lemot.");
+        }
 
-        Ax.toast("Tunggu sebentar, file sedang diunduh...");
-
+    } catch(e) {
+        Ax.toast("Error Sistem: " + e.message);
+    }
+})();
         // 3. RADAR AXERON (Melototin file sampai kelar didownload)
         let cmd = `
             mkdir -p "${targetDir}" 2>/dev/null
