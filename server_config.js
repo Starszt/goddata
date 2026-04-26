@@ -1,84 +1,100 @@
 (async function() {
     try {
         let n = window.selectedConfig || "Config";
+        let pkg = window.targetPkg || "com.dts.freefireth";
         let fileGz = "";
         let targetDir = "/sdcard/Android/data";
 
-        // SEMUA Config termasuk ESP Hologram sekarang arahnya murni ke Android/data
-        if (n === 'Config AimHead') {
-            fileGz = "aimhead.gz";
-        } else if (n === 'Config EasyHS') {
-            fileGz = "easyhs.gz";
-        } else if (n === 'Config DragShot') {
-            fileGz = "dragshot.gz";
-        } else if (n === 'Config Stabilizer') {
-            fileGz = "stabilizer.gz";
-        } else if (n === 'ESP Hologram') {
-            fileGz = "hologram.gz";
-        }
-
-        // Link Hugging Face lu
-        let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
-
-        if (typeof Ax !== 'undefined') {
-            Ax.toast("Mendownload " + n + " dari Server...");
-        }
+        // MAPPING SESUAI LINK HUGGING FACE LU
+        if (n === 'Config AimHead') fileGz = "aimhead.gz";
+        else if (n === 'Config EasyHS') fileGz = "easyhs.gz";
+        else if (n === 'Config DragShot') fileGz = "dragshot.gz";
+        else if (n === 'Config Stabilizer') fileGz = "stabilizer.gz";
+        else if (n === 'ESP Hologram') fileGz = "hologram.gz";
 
         let baseName = fileGz.replace('.gz', '');
+        
+        // LINK MUTLAK LU
+        let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        // 1. BERSIHIN SAMPAH LAMA DULU BIAR GAK BENTROK NAMA FILE (Command sejajar menurun)
+        if (typeof Ax !== 'undefined') Ax.toast("Mendownload " + n + " dari HuggingFace...");
+
+        // 1. BERSIHKAN FILE LAMA SECARA SEJAJAR (Biar ga bentrok)
         let cleanCmd = `
             rm -f /sdcard/Download/${baseName}*.gz
+            rm -f /sdcard/Download/${baseName}*.zip
             rm -f /sdcard/Download/${baseName}*.crdownload
         `;
         if (typeof Ax !== 'undefined') await Ax.exec(cleanCmd);
 
-        // 2. DOWNLOAD LANGSUNG PAKAI BROWSER (DIJAMIN FILE UTUH 100% TANPA CURL)
-        // Gw tambahin waktu (Date.now) di namanya biar browser gak nanya "Download file ini lagi?"
+        // 2. DOWNLOAD VIA BROWSER IFRAME (Bypass blokiran, tanpa curl)
         let uniqueFileName = baseName + "_" + Date.now() + ".gz";
-        
         let res = await fetch(dlUrl + "?nocache=" + Date.now(), { cache: 'no-store' });
-        if (!res.ok) throw new Error("Gagal Download Config dari HuggingFace");
+        
+        if (!res.ok) throw new Error("Server 404: Cek public/private repo lu!");
         let blob = await res.blob();
         
-        // Simpan otomatis ke /sdcard/Download/
         let a = document.createElement("a");
         let url = window.URL.createObjectURL(blob);
         a.href = url;
         a.download = uniqueFileName;
         document.body.appendChild(a);
-        a.click(); 
+        a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
-        if (typeof Ax !== 'undefined') {
-            Ax.toast("Mengekstrak ke sistem (Mohon tunggu)...");
-        }
+        if (typeof Ax !== 'undefined') Ax.toast("Menunggu download selesai...");
 
-        // 3. JEDA 5 DETIK BIAR DOWNLOAD KELAR, BARU AXERON NGAMUK!
-        setTimeout(async () => {
-            // Command sejajar menurun sesuai standar lu
-            let cmd = `
-                mkdir -p "${targetDir}" 2>/dev/null
-                for FILE in /sdcard/Download/${baseName}*.gz; do
-                    if [ -f "$FILE" ]; then
-                        toybox tar -xzf "$FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "${targetDir}" 2>/dev/null
-                        rm -f "$FILE"
-                    fi
-                done
-                pm trim-caches 999G >/dev/null 2>&1
-                cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
-            `;
+        // 3. RADAR & FALLBACK EKSTRAK (SEJAJAR MENURUN)
+        let cmd = `
+            TARGET_DIR="${targetDir}"
             
-            if (typeof Ax !== 'undefined') {
-                await Ax.exec(cmd);
-                Ax.toast(n + " Sukses Diinjeksi!");
-            }
-        }, 5000); // Gw naikin jadi 5 detik (5000) biar sinyal lemot tetep kebagian utuh
+            mkdir -p "$TARGET_DIR" 2>/dev/null
+            
+            sleep 4
+            
+            FOUND_FILE=""
+            
+            for i in $(seq 1 15); do
+                TEMP_FILE=$(ls -t /sdcard/Download/${baseName}*.gz 2>/dev/null | head -n 1)
+                if [ -n "$TEMP_FILE" ]; then
+                    IS_DOWNLOADING=$(ls /sdcard/Download/${baseName}*.crdownload 2>/dev/null)
+                    if [ -z "$IS_DOWNLOADING" ]; then
+                        FOUND_FILE="$TEMP_FILE"
+                        break
+                    fi
+                fi
+                sleep 1
+            done
+
+            if [ -n "$FOUND_FILE" ]; then
+                
+                # JURUS 1: Double Tar
+                toybox tar -xzf "$FOUND_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
+                
+                # JURUS 2: Tar Normal
+                toybox tar -xzf "$FOUND_FILE" -C "$TARGET_DIR" 2>/dev/null
+                
+                # JURUS 3: Unzip
+                unzip -o "$FOUND_FILE" -d "$TARGET_DIR" 2>/dev/null
+                
+                # JURUS 4: Tar Bawaan
+                tar -xzf "$FOUND_FILE" -C "$TARGET_DIR" 2>/dev/null
+                
+                rm -f /sdcard/Download/${baseName}*.gz
+                pm trim-caches 999G >/dev/null 2>&1
+                
+                cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses diekstrak ke Android/data!"
+            else
+                cmd notification post -S bigtext -t "Goddata System" "Gagal" "File gagal ditarik atau timeout!"
+            fi
+        `;
+        
+        if (typeof Ax !== 'undefined') {
+            Ax.exec(cmd);
+        }
 
     } catch(e) {
-        if (typeof Ax !== 'undefined') {
-            Ax.toast("Download Error: " + e.message);
-        }
+        if (typeof Ax !== 'undefined') Ax.toast("Error: " + e.message);
     }
 })();
