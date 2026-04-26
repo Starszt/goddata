@@ -1,7 +1,7 @@
 (async function() {
     try {
-        let n = window.selectedConfig || "Config";
-        let pkg = window.targetPkg || "com.dts.freefireth";
+        let n = window.selectedConfig;
+        let pkg = window.targetPkg;
         let fileGz = "";
         let targetDir = "/sdcard/Android/data";
 
@@ -14,81 +14,52 @@
             targetDir = "/sdcard/Android/data/" + pkg + "/files/contentcache/Optional/android/gameassetbundles";
         }
 
+        // Link Hugging Face lu
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        if (typeof Ax !== 'undefined') Ax.toast("Menganalisa " + n + " dari Server...");
+        Ax.toast("Mendownload " + n + " dari Server...");
 
-        // SCRIPT CCTV: Semua command sejajar menurun, catat semua error ke GD_LOG.txt!
-        let cmd = `
-LOG_FILE="/sdcard/GD_LOG.txt"
-TARGET_DIR="${targetDir}"
-TMP_FILE="/data/local/tmp/gdtmp.gz"
-
-echo "=== LOG GODDATA V8 ===" > "$LOG_FILE"
-echo "Config: ${n}" >> "$LOG_FILE"
-
-echo "1. Mempersiapkan folder..." >> "$LOG_FILE"
-mkdir -p "$TARGET_DIR" 2>>"$LOG_FILE"
-
-echo "2. Menghapus sisa file temp..." >> "$LOG_FILE"
-rm -f "$TMP_FILE" 2>>"$LOG_FILE"
-
-echo "3. Mencoba download dari Server..." >> "$LOG_FILE"
-if command -v curl >/dev/null 2>&1; then
-    echo "Menggunakan CURL" >> "$LOG_FILE"
-    curl -skL "$dlUrl" -o "$TMP_FILE" 2>>"$LOG_FILE"
-elif command -v wget >/dev/null 2>&1; then
-    echo "Menggunakan WGET" >> "$LOG_FILE"
-    wget -qO "$TMP_FILE" --no-check-certificate "$dlUrl" 2>>"$LOG_FILE"
-else
-    echo "FATAL: Tidak ada curl atau wget di executor ini!" >> "$LOG_FILE"
-fi
-
-echo "4. Mengecek hasil download..." >> "$LOG_FILE"
-if [ -s "$TMP_FILE" ]; then
-    echo "File berhasil ditarik. Mulai ekstrak..." >> "$LOG_FILE"
-    
-    toybox tar -xzf "$TMP_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>>"$LOG_FILE"
-    
-    echo "Ekstrak Selesai." >> "$LOG_FILE"
-    rm -f "$TMP_FILE"
-    pm trim-caches 999G >/dev/null 2>&1
-    
-    cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
-else
-    echo "GAGAL: File kosong atau link ditolak." >> "$LOG_FILE"
-    cmd notification post -S bigtext -t "Goddata System" "Gagal" "Buka file /sdcard/GD_LOG.txt buat liat errornya!"
-fi
-        `;
+        // 1. DOWNLOAD LANGSUNG PAKAI BROWSER (DIJAMIN FILE UTUH 100%)
+        let res = await fetch(dlUrl + "?nocache=" + new Date().getTime(), { cache: 'no-store' });
+        if (!res.ok) throw new Error("Gagal Download Config");
+        let blob = await res.blob();
         
-        if (typeof Ax !== 'undefined') {
-            await Ax.exec(cmd);
-            Ax.toast("Cek notifikasi atau buka file GD_LOG.txt di memori internal lu!");
-        }
+        // 2. SIMPAN OTOMATIS KE FOLDER /sdcard/Download/
+        let a = document.createElement("a");
+        let url = window.URL.createObjectURL(blob);
+        a.href = url;
+        a.download = fileGz;
+        document.body.appendChild(a);
+        a.click(); // Ngetrigger download
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        Ax.toast("Mengekstrak ke sistem...");
+
+        // 3. KASIH JEDA 3 DETIK, BARU AXERON NGAMUK!
+        setTimeout(async () => {
+            let cmd = `
+                mkdir -p "${targetDir}" 2>/dev/null
+                
+                # Ekstrak dari folder Download ke folder Game
+                # Pakai wildcard (*) jaga-jaga kalau namanya kerename jadi aimhead(1).gz
+                for FILE in /sdcard/Download/${fileGz.replace('.gz', '')}*.gz; do
+                    if [ -f "$FILE" ]; then
+                        toybox tar -xzf "$FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "${targetDir}" 2>/dev/null
+                        # Hapus mentahan setelah diekstrak
+                        rm -f "$FILE"
+                    fi
+                done
+                
+                pm trim-caches 999G >/dev/null 2>&1
+                echo "SUKSES"
+            `;
+            
+            let result = await Ax.exec(cmd);
+            Ax.toast(n + " Sukses Diinjeksi!");
+        }, 3000); // 3000 = 3 detik. Bisa lu gedein jadi 5000 kalau internet lemot.
 
     } catch(e) {
-        if (typeof Ax !== 'undefined') Ax.toast("Error JS: " + e.message);
-    }
-})();
-                            
-                            cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
-                        else
-                            cmd notification post -S bigtext -t "Goddata System" "Gagal" "File gagal dirakit di mesin."
-                        fi
-                    `;
-                    
-                    await Ax.exec(cmd);
-                    Ax.toast("Selesai! Silakan cek notifikasi HP lu.");
-                }
-            } catch(err) {
-                if (typeof Ax !== 'undefined') Ax.toast("Error Suntik: " + err.message);
-            }
-        };
-        
-        // Mulai proses baca memori
-        reader.readAsDataURL(blob);
-
-    } catch(e) {
-        if (typeof Ax !== 'undefined') Ax.toast("Error Server: " + e.message);
+        Ax.toast("Download Error: " + e.message);
     }
 })();
