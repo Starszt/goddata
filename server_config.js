@@ -1,7 +1,7 @@
 (async function() {
     try {
-        let n = window.selectedConfig;
-        let pkg = window.targetPkg;
+        let n = window.selectedConfig || "Config";
+        let pkg = window.targetPkg || "com.dts.freefireth";
         let fileGz = "";
         let targetDir = "/sdcard/Android/data";
 
@@ -17,56 +17,44 @@
         // Link Hugging Face lu
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        Ax.toast("Menarik data " + n + " dari Server...");
+        if (typeof Ax !== 'undefined') Ax.toast("Menarik data " + n + " dari Server...");
 
-        // SCRIPT DETEKTIF: Download, Nyamar jadi Browser, dan Cetak Error Asli!
+        // INI SCRIPT SHELL MURNI (KAGAK BAKAL CRASH "INCOUDION" LAGI)
         let cmd = `
             TARGET_DIR="${targetDir}"
-            TMP_DIR="/sdcard/GDX_TMP"
+            TMP_FILE="/sdcard/Download/gdtmp_goddata.gz"
             
-            mkdir -p "$TMP_DIR" 2>/dev/null
-            TMP_FILE="$TMP_DIR/${fileGz}"
+            # Bikin folder target dan hapus file temp sisaan
+            mkdir -p "$TARGET_DIR" 2>/dev/null
             rm -f "$TMP_FILE"
             
-            # Coba download pakai identitas palsu biar HuggingFace ga curiga
-            if command -v curl >/dev/null 2>&1; then
-                ERR=$(curl -skL -A "Mozilla/5.0 (Android)" "${dlUrl}" -o "$TMP_FILE" 2>&1)
-            elif command -v wget >/dev/null 2>&1; then
-                ERR=$(wget -qO "$TMP_FILE" --user-agent="Mozilla/5.0 (Android)" --no-check-certificate "${dlUrl}" 2>&1)
-            else
-                ERR=$(toybox wget -qO "$TMP_FILE" "${dlUrl}" 2>&1)
-            fi
+            # Coba download pakai curl atau wget, sikat habis!
+            curl -sL "${dlUrl}" -o "$TMP_FILE" || wget -qO "$TMP_FILE" "${dlUrl}" --no-check-certificate || toybox wget -qO "$TMP_FILE" "${dlUrl}"
             
-            # Cek apakah file sukses masuk dan ga kosong (-s)
+            # CEK MUTLAK: Apakah file berhasil didownload dan ga kosong?
             if [ -s "$TMP_FILE" ]; then
-                mkdir -p "$TARGET_DIR" 2>/dev/null
+                # Hajar ekstrak pake single pipe lu!
                 toybox tar -xzf "$TMP_FILE" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "$TARGET_DIR" 2>/dev/null
                 
-                # Hapus folder sampah
-                rm -rf "$TMP_DIR"
+                # Sapu bersih file mentahan
+                rm -f "$TMP_FILE"
                 pm trim-caches 999G >/dev/null 2>&1
                 
-                echo "SUKSES"
+                # Keluarin Notifikasi Android kalau sukses
+                cmd notification post -S bigtext -t "Goddata System" "Berhasil" "${n} sukses di-inject!"
             else
-                rm -rf "$TMP_DIR"
-                echo "ERR_ASLI: $ERR"
+                rm -f "$TMP_FILE"
+                # Keluarin Notifikasi Android kalau gagal
+                cmd notification post -S bigtext -t "Goddata System" "Gagal" "Gagal narik config. Cek sinyal atau link HuggingFace lu."
             fi
         `;
         
-        let hasil = await Ax.exec(cmd);
-        
-        // BACA HASIL DARI MESIN ANDROID LU
-        if (hasil && hasil.includes("SUKSES")) {
-            Ax.toast(n + " Sukses Diinjeksi!");
-        } else if (hasil && hasil.includes("ERR_ASLI:")) {
-            // Bakal ngasih tau lu error aslinya apa! (contoh: curl not found, 404, dll)
-            let pesanError = hasil.split("ERR_ASLI:")[1].trim().substring(0, 40); 
-            Ax.toast("Gagal: " + pesanError);
-        } else {
-            Ax.toast("Gagal: Mesin tidak merespon.");
+        // Hajar langsung ke mesin Axeron tanpa ngebaca return hasil JS!
+        if (typeof Ax !== 'undefined') {
+            await Ax.exec(cmd);
         }
 
     } catch(e) {
-        Ax.toast("Error Sistem JS: " + e.message);
+        if (typeof Ax !== 'undefined') Ax.toast("Error Sistem: " + e.message);
     }
 })();
