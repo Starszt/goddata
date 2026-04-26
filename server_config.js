@@ -19,26 +19,28 @@
 
         Ax.toast("Mendownload " + n + "...");
 
-        // 1. SAPU BERSIH FILE LAMA BIAR NGGAK BENTROK
+        // 1. SAPU BERSIH SAMPAH LAMA BIAR GAK BENTROK
         await Ax.exec(`rm -f /sdcard/Download/${baseName}*.gz /sdcard/Download/${baseName}*.crdownload`);
 
-        // 2. DOWNLOAD LANGSUNG (ANTI-BLOB) BIAR RAM AMAN
-        let a = document.createElement("a");
-        a.href = dlUrl + "?t=" + Date.now(); // Bypass cache
-        a.download = fileGz;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        // 2. JURUS IFRAME SILUMAN (Bypass blokiran Browser)
+        // Ini dijamin nembus walau lu spam klik 100x
+        let iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = dlUrl + "?t=" + Date.now();
+        document.body.appendChild(iframe);
+        
+        // Hapus iframe setelah 5 detik biar HP lu tetep ringan
+        setTimeout(() => { document.body.removeChild(iframe); }, 5000);
 
-        Ax.toast("Tunggu sebentar, sedang mengunduh...");
+        Ax.toast("Tunggu sebentar, file sedang diunduh...");
 
-        // 3. RADAR PINTAR AXERON (Pantau ukuran file sampai download kelar)
+        // 3. RADAR AXERON (Melototin file sampai kelar didownload)
         let cmd = `
             mkdir -p "${targetDir}" 2>/dev/null
             
-            # Cari file yang baru di-download (Tunggu max 20 detik buat muncul)
             FILE_TARGET=""
-            for i in $(seq 1 20); do
+            # Pantau folder Download (Maksimal 60 detik)
+            for i in $(seq 1 60); do
                 FILE_TARGET=$(ls -t /sdcard/Download/${baseName}*.gz 2>/dev/null | head -n 1)
                 if [ -n "$FILE_TARGET" ]; then
                     break
@@ -51,33 +53,29 @@
                 exit 1
             fi
 
-            # Radar Ukuran: Tunggu sampai ukuran file berhenti bertambah
+            # Pantau Ukuran File: Tunggu sampai berhenti bertambah (Download 100% selesai)
             OLD_SIZE="-1"
-            NEW_SIZE=$(ls -nl "$FILE_TARGET" | awk '{print $5}')
+            NEW_SIZE=$(wc -c < "$FILE_TARGET" 2>/dev/null)
             
             while [ -z "$NEW_SIZE" ] || [ "$OLD_SIZE" != "$NEW_SIZE" ]; do
                 OLD_SIZE=$NEW_SIZE
                 sleep 2
-                NEW_SIZE=$(ls -nl "$FILE_TARGET" | awk '{print $5}')
+                NEW_SIZE=$(wc -c < "$FILE_TARGET" 2>/dev/null)
             done
 
-            sleep 1 # Jeda napas sistem 1 detik
+            sleep 1 # Jeda napas 1 detik buat storage
 
-            # EKSTRAK MUTLAK KARENA FILE UDAH 100% UTUH!
+            # EKSTRAK MUTLAK!
             toybox tar -xzf "$FILE_TARGET" -O | toybox tar --touch -xf - --no-same-owner --no-same-permissions -C "${targetDir}" 2>/dev/null
             
-            # Bersihkan jejak mentahan
+            # Buang file mentahan
             rm -f /sdcard/Download/${baseName}*.gz
             pm trim-caches 999G >/dev/null 2>&1
-            
-            echo "SUKSES"
         `;
         
-        // Jalanin radar di belakang layar
+        // Eksekusi Radar Axeron di belakang layar
         Ax.exec(cmd).then(() => {
             Ax.toast(n + " Sukses Diinjeksi!");
-        }).catch(() => {
-            Ax.toast("Gagal Injeksi: Coba lagi");
         });
 
     } catch(e) {
