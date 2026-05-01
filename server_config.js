@@ -8,7 +8,7 @@
 
         if (n === 'Config AimHead') fileGz = "aimhead.gz";
         else if (n === 'Config EasyHS') fileGz = "easyhs.gz";
-        else if (n === 'Config DragShot') fileGz = "dragshot.gz";
+        else if (n === 'Config DragHS') fileGz = "draghs.gz";
         else if (n === 'Config Stabilizer') fileGz = "stabilizer.gz";
         else if (n === 'ESP Hologram') fileGz = "hologram.gz";
 
