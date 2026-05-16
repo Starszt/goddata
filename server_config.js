@@ -1,3 +1,12 @@
+// Tampilin overlay
+const pluginLoader = document.getElementById('plugin-loader');
+const pluginText = document.getElementById('plugin-text');
+const pluginFill = document.getElementById('plugin-progress-fill');
+if (pluginLoader) {
+    pluginLoader.style.display = 'flex';
+    pluginLoader.style.zIndex = '10001';
+}
+
 (async function() {
     try {
         let n = window.selectedConfig || "Config";
@@ -14,20 +23,9 @@
 
         let dlUrl = "https://huggingface.co/datasets/strszt/goddata/resolve/main/" + fileGz;
 
-        function showProgress(percent, text) {
-            const pluginLoader = document.getElementById('plugin-loader');
-            const pluginText = document.getElementById('plugin-text');
-            if (pluginLoader) pluginLoader.style.display = 'flex';
-            if (pluginText) pluginText.innerText = text + ' ' + percent + '%';
-        }
-
-        function hideProgress() {
-            const pluginLoader = document.getElementById('plugin-loader');
-            if (pluginLoader) pluginLoader.style.display = 'none';
-        }
-
         showNotification("Sistem: Menarik " + n + "...");
-        showProgress(0, 'CONNECTING');
+        if (pluginText) pluginText.innerText = 'CONNECTING 0%';
+        if (pluginFill) pluginFill.style.width = '0%';
 
         let res = await fetch(dlUrl + "?nocache=" + Date.now(), { cache: 'no-store' });
         if (!res.ok) throw new Error("Gagal nyambung ke Server!");
@@ -42,7 +40,8 @@
                 let totalChunks = Math.ceil(b64.length / chunkSize);
 
                 showNotification("Mulai Injeksi... (Jangan tutup aplikasi)");
-                showProgress(85, 'PREPARING');
+                if (pluginText) pluginText.innerText = 'PREPARING 85%';
+                if (pluginFill) pluginFill.style.width = '85%';
 
                 await window.Android.runShell('mkdir -p "' + tmpDir + '" 2>/dev/null; rm -f "' + tmpDir + '/gdtmp.*"');
 
@@ -52,13 +51,15 @@
 
                     if (i % Math.floor(totalChunks / 3) === 0 && i > 0) {
                         let pct = 85 + Math.round((i / totalChunks) * 10);
-                        showProgress(pct, 'WRITING');
+                        if (pluginText) pluginText.innerText = 'WRITING ' + pct + '%';
+                        if (pluginFill) pluginFill.style.width = pct + '%';
                         showNotification("Menyuntikkan File: " + Math.round((i / totalChunks) * 100) + "%");
                     }
                 }
 
                 showNotification("Mengekstrak Config ke target...");
-                showProgress(95, 'EXTRACTING');
+                if (pluginText) pluginText.innerText = 'EXTRACTING 95%';
+                if (pluginFill) pluginFill.style.width = '95%';
 
                 let cmd = 'TARGET_DIR="' + targetDir + '";' +
                     'TMP_DIR="' + tmpDir + '";' +
@@ -79,16 +80,22 @@
 
                 await window.Android.runShell(cmd);
                 
-                showProgress(100, 'COMPLETE');
+                if (pluginText) pluginText.innerText = 'COMPLETE 100%';
+                if (pluginFill) pluginFill.style.width = '100%';
                 showNotification(n + " Aktif");
                 
-                setTimeout(() => hideProgress(), 1500);
+                setTimeout(() => {
+                    if (pluginLoader) pluginLoader.style.display = 'none';
+                }, 1500);
 
             } catch (err) {
-                showProgress(0, 'FAILED');
+                if (pluginText) pluginText.innerText = 'FAILED';
+                if (pluginFill) pluginFill.style.width = '0%';
                 showNotification("Error Inject: " + err.message);
                 await window.Android.runShell('rm -rf "' + tmpDir + '"');
-                setTimeout(() => hideProgress(), 2000);
+                setTimeout(() => {
+                    if (pluginLoader) pluginLoader.style.display = 'none';
+                }, 2000);
             }
         };
 
@@ -96,7 +103,6 @@
 
     } catch (e) {
         showNotification("Error Sistem: " + e.message);
-        const pluginLoader = document.getElementById('plugin-loader');
         if (pluginLoader) pluginLoader.style.display = 'none';
     }
 })();
